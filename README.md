@@ -19,7 +19,7 @@ Reddit's raw `.json` files are messy — nested listings, verbose metadata, real
 
 ## Quick Start
 
-1. Download [`tools/thread-distiller.html`](tools/thread-distiller.html) (or clone the repo)
+1. Download [`thread-distiller.html`](thread-distiller.html) (or clone the repo)
 2. Open the file in any modern browser
 3. Get your raw Reddit JSON — add `.json` to any Reddit post URL:
    ```
