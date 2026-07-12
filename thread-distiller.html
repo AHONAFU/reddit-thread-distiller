@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thread Distiller — Reddit JSON Converter</title>
+<style>
+  :root{
+    --bg:#14181d;
+    --panel:#1c2229;
+    --panel-2:#20272f;
+    --line:#2c353f;
+    --ink:#e8ebee;
+    --ink-dim:#8b96a1;
+    --accent:#ff5714;
+    --accent-soft:rgba(255,87,20,.14);
+    --ok:#59c98a;
+    --err:#ff6b6b;
+    --mono:"SF Mono","Cascadia Code","JetBrains Mono",Consolas,Menlo,monospace;
+    --sans:"Segoe UI",system-ui,-apple-system,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);min-height:100vh}
+
+  header{
+    display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+    padding:22px 28px 16px;border-bottom:1px solid var(--line);
+  }
+  header h1{font-size:19px;font-weight:700;letter-spacing:.2px}
+  header h1 .slash{color:var(--accent)}
+  header p{color:var(--ink-dim);font-size:13px}
+
+  .controls{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:12px 28px;border-bottom:1px solid var(--line);background:var(--panel);
+    font-size:13px;
+  }
+  .ctl{display:flex;align-items:center;gap:8px;color:var(--ink-dim)}
+  .ctl select{
+    background:var(--panel-2);color:var(--ink);border:1px solid var(--line);
+    border-radius:6px;padding:4px 8px;font-family:inherit;font-size:13px;
+  }
+  .ctl input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+  .ctl label{cursor:pointer;user-select:none;color:var(--ink)}
+
+  main{
+    display:grid;grid-template-columns:1fr 1fr;gap:0;
+    min-height:calc(100vh - 130px);
+  }
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+
+  .pane{display:flex;flex-direction:column;min-width:0}
+  .pane.in{border-right:1px solid var(--line)}
+  @media(max-width:900px){.pane.in{border-right:none;border-bottom:1px solid var(--line)}}
+
+  .pane-head{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 18px;border-bottom:1px solid var(--line);
+    font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);
+  }
+  .pane-head .actions{display:flex;gap:8px}
+
+  button{
+    background:var(--panel-2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:6px 13px;font-size:13px;font-family:inherit;
+    cursor:pointer;transition:border-color .12s, background .12s;
+  }
+  button:hover{border-color:var(--accent)}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#16110d;font-weight:700}
+  button.primary:hover{background:#ff6c33}
+  button:disabled{opacity:.4;cursor:not-allowed}
+
+  textarea{
+    flex:1;width:100%;background:transparent;color:var(--ink);border:none;resize:none;
+    padding:16px 18px;font-family:var(--mono);font-size:12.5px;line-height:1.55;
+    min-height:280px;
+  }
+  textarea::placeholder{color:#525d68}
+  textarea:focus{outline:none;background:rgba(255,255,255,.015)}
+
+  .dropzone{
+    margin:0 18px 14px;border:1.5px dashed var(--line);border-radius:10px;
+    padding:13px;text-align:center;color:var(--ink-dim);font-size:13px;cursor:pointer;
+    transition:border-color .12s,background .12s;
+  }
+  .dropzone:hover,.dropzone.over{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+  .dropzone input{display:none}
+  .dropzone b{color:var(--accent)}
+
+  .status{
+    padding:8px 18px;font-family:var(--mono);font-size:12px;min-height:34px;
+    border-top:1px solid var(--line);color:var(--ink-dim);
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  }
+  .status .ok{color:var(--ok)}
+  .status .err{color:var(--err)}
+  .chip{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:99px;
+    padding:2px 10px;font-size:11.5px;
+  }
+  .chip em{color:var(--accent);font-style:normal;font-weight:700}
+
+  #output{
+    flex:1;overflow:auto;padding:16px 18px;font-family:var(--mono);
+    font-size:12.5px;line-height:1.55;white-space:pre;color:var(--ink);
+  }
+  #output .empty{
+    white-space:normal;color:#525d68;max-width:420px;line-height:1.7;font-family:var(--sans);font-size:13.5px;
+  }
+  #output .empty code{font-family:var(--mono);color:var(--ink-dim);background:var(--panel-2);padding:1px 5px;border-radius:4px}
+
+  /* JSON syntax tint */
+  .jk{color:#7fb4e6}
+  .js{color:#c9e69a}
+  .jn{color:#f0a35e}
+
+  .batchlist{padding:6px 18px 14px;display:flex;flex-direction:column;gap:6px;overflow:auto}
+  .batchitem{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    padding:8px 12px;font-size:13px;
+  }
+  .batchitem .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .batchitem .meta{color:var(--ink-dim);font-family:var(--mono);font-size:11.5px;flex-shrink:0}
+  .batchitem.bad{border-color:var(--err)}
+  .batchitem.bad .meta{color:var(--err)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>thread<span class="slash">/</span>distiller</h1>
+  <p>Raw Reddit .json → clean anonymized thread, top comments only</p>
+</header>
+
+<div class="controls">
+  <div class="ctl">
+    Top comments
+    <select id="limit">
+      <option>5</option>
+      <option selected>10</option>
+      <option>15</option>
+      <option>20</option>
+      <option value="0">All</option>
+    </select>
+  </div>
+  <div class="ctl">
+    <input type="checkbox" id="anon" checked>
+    <label for="anon">Anonymize usernames</label>
+  </div>
+  <div class="ctl">
+    <input type="checkbox" id="keepReplies" checked>
+    <label for="keepReplies">Include nested replies</label>
+  </div>
+  <div class="ctl" style="margin-left:auto;color:var(--ink-dim)">
+    Tip: add <code style="font-family:var(--mono)">.json</code> to any Reddit post URL to get the raw file
+  </div>
+</div>
+
+<main>
+  <section class="pane in">
+    <div class="pane-head">
+      <span>Input</span>
+      <div class="actions">
+        <button id="clearBtn">Clear</button>
+        <button id="convertBtn" class="primary">Convert</button>
+      </div>
+    </div>
+    <textarea id="input" placeholder='Paste the raw JSON from a Reddit post URL (the one ending in .json) here…&#10;&#10;Already-converted files in the clean format also work — they will be re-trimmed to the top-comment limit.'></textarea>
+    <label class="dropzone" id="dropzone">
+      <b>Drop .json files here</b> or click to pick — handles a whole batch at once
+      <input type="file" id="fileInput" accept=".json,application/json" multiple>
+    </label>
+    <div class="status" id="statusIn">Waiting for input.</div>
+  </section>
+
+  <section class="pane out">
+    <div class="pane-head">
+      <span>Output</span>
+      <div class="actions">
+        <button id="copyBtn" disabled>Copy</button>
+        <button id="dlBtn" disabled>Download</button>
+        <button id="dlAllBtn" disabled>Download all (batch)</button>
+      </div>
+    </div>
+    <div id="output"><div class="empty">Converted thread appears here as formatted JSON: post metadata plus the top comments sorted by score, replies nested under their parents.<br><br>For batches, drop multiple files on the left — each converts separately and <code>Download all</code> bundles them into one file.</div></div>
+    <div class="batchlist" id="batchlist"></div>
+    <div class="status" id="statusOut"></div>
+  </section>
+</main>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const input = $('input'), output = $('output');
+  const statusIn = $('statusIn'), statusOut = $('statusOut');
+  const batchlist = $('batchlist');
+
+  let current = null;          // last single conversion result
+  let batch = [];              // [{name, result|error}]
+  const anonMap = new Map();   // consistent aliases across a whole batch
+
+  // ---------- anonymization ----------
+  function hashAlias(name){
+    if(!name || name === '[deleted]' || name === '[removed]') return name || '[deleted]';
+    if(anonMap.has(name)) return anonMap.get(name);
+    // FNV-1a x2 for enough bits, then base62
+    let h1 = 0x811c9dc5, h2 = 0x811c9dc5 ^ 0x5bd1e995;
+    for(let i=0;i<name.length;i++){
+      h1 ^= name.charCodeAt(i); h1 = Math.imul(h1, 0x01000193) >>> 0;
+      h2 ^= name.charCodeAt(name.length-1-i); h2 = Math.imul(h2, 0x01000193) >>> 0;
+    }
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let n = (BigInt(h1) << 32n) | BigInt(h2), s = '';
+    while(n > 0n){ s += chars[Number(n % 62n)]; n /= 62n; }
+    const alias = 'user_' + (s || '0').slice(0, 8 + (name.length % 5));
+    anonMap.set(name, alias);
+    return alias;
+  }
+  const author = name => $('anon').checked ? hashAlias(name) : (name || '[deleted]');
+
+  // ---------- helpers ----------
+  const toISO = utc => {
+    if(typeof utc === 'string') return utc; // already formatted
+    return new Date(utc * 1000).toISOString().replace(/\.\d{3}Z$/, '');
+  };
+  const limit = () => parseInt($('limit').value, 10);
+
+  function mapComment(child, depth){
+    const d = child.data;
+    let replies = [];
+    if($('keepReplies').checked && d.replies && d.replies.data && d.replies.data.children){
+      replies = d.replies.data.children
+        .filter(c => c.kind === 't1')
+        .map(c => mapComment(c, depth + 1));
+      replies.sort((a,b) => b.score - a.score);
+    }
+    return { author: author(d.author), body: d.body, score: d.score, depth, replies };
+  }
+
+  function reprocessClean(c, depth){
+    let replies = ($('keepReplies').checked && Array.isArray(c.replies))
+      ? c.replies.map(r => reprocessClean(r, depth + 1)) : [];
+    replies.sort((a,b) => b.score - a.score);
+    return { author: author(c.author), body: c.body, score: c.score, depth, replies };
+  }
+
+  function convert(text){
+    const data = JSON.parse(text);
+    let post, comments;
+
+    if(Array.isArray(data) && data[0] && data[0].data && data[0].data.children){
+      // Raw Reddit format: [postListing, commentListing]
+      const p = data[0].data.children[0].data;
+      post = {
+        title: p.title,
+        author: author(p.author),
+        score: p.score,
+        num_comments: p.num_comments,
+        subreddit: p.subreddit,
+        created_utc: toISO(p.created_utc)
+      };
+      comments = ((data[1] && data[1].data && data[1].data.children) || [])
+        .filter(c => c.kind === 't1')
+        .map(c => mapComment(c, 0));
+    } else if(data && data.post && Array.isArray(data.comments)){
+      // Already in the clean format — re-trim / re-anonymize
+      post = Object.assign({}, data.post, {
+        author: author(data.post.author),
+        created_utc: toISO(data.post.created_utc)
+      });
+      comments = data.comments.map(c => reprocessClean(c, 0));
+    } else {
+      throw new Error('Unrecognized structure — expected raw Reddit .json (an array of two listings) or the clean {post, comments} format.');
+    }
+
+    comments.sort((a,b) => b.score - a.score);
+    const lim = limit();
+    if(lim > 0) comments = comments.slice(0, lim);
+    return { post, comments };
+  }
+
+  // ---------- rendering ----------
+  function tintJSON(json){
+    return json
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/("(?:[^"\\]|\\.)*")(\s*:)?/g, (m, str, colon) =>
+        colon ? '<span class="jk">'+str+'</span>'+colon : '<span class="js">'+str+'</span>')
+      .replace(/\b(-?\d+(?:\.\d+)?)\b(?![^<]*<\/span>)/g, '<span class="jn">$1</span>');
+  }
+
+  function countComments(list){
+    return list.reduce((n,c) => n + 1 + countComments(c.replies || []), 0);
+  }
+
+  function slug(title){
+    return (title || 'thread').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60) || 'thread';
+  }
+
+  function showResult(result){
+    current = result;
+    const json = JSON.stringify(result, null, 2);
+    output.innerHTML = tintJSON(json);
+    $('copyBtn').disabled = false;
+    $('dlBtn').disabled = false;
+    statusOut.innerHTML =
+      '<span class="ok">✓ converted</span>' +
+      '<span class="chip">r/<em>' + result.post.subreddit + '</em></span>' +
+      '<span class="chip"><em>' + result.comments.length + '</em> top-level</span>' +
+      '<span class="chip"><em>' + countComments(result.comments) + '</em> total incl. replies</span>' +
+      '<span class="chip"><em>' + json.length.toLocaleString() + '</em> chars</span>';
+  }
+
+  function fail(msg){
+    statusIn.innerHTML = '<span class="err">✗ ' + msg.replace(/</g,'&lt;') + '</span>';
+  }
+
+  // ---------- single convert ----------
+  $('convertBtn').addEventListener('click', () => {
+    const text = input.value.trim();
+    if(!text){ fail('Nothing to convert — paste JSON first.'); return; }
+    try{
+      const result = convert(text);
+      statusIn.innerHTML = '<span class="ok">✓ parsed OK</span>';
+      showResult(result);
+    }catch(e){ fail(e.message); }
+  });
+
+  $('clearBtn').addEventListener('click', () => {
+    input.value = ''; current = null; batch = []; batchlist.innerHTML = '';
+    output.innerHTML = '<div class="empty">Cleared. Paste a new thread or drop files.</div>';
+    statusIn.textContent = 'Waiting for input.'; statusOut.textContent = '';
+    $('copyBtn').disabled = $('dlBtn').disabled = $('dlAllBtn').disabled = true;
+  });
+
+  // ---------- copy / download ----------
+  $('copyBtn').addEventListener('click', async () => {
+    if(!current) return;
+    const json = JSON.stringify(current, null, 2);
+    try{ await navigator.clipboard.writeText(json); }
+    catch(_){
+      const ta = document.createElement('textarea');
+      ta.value = json; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+    }
+    statusOut.innerHTML = '<span class="ok">✓ copied to clipboard</span>';
+  });
+
+  function downloadText(name, text){
+    const blob = new Blob([text], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+
+  $('dlBtn').addEventListener('click', () => {
+    if(current) downloadText(slug(current.post.title) + '.json', JSON.stringify(current, null, 2));
+  });
+
+  $('dlAllBtn').addEventListener('click', () => {
+    const good = batch.filter(b => b.result).map(b => b.result);
+    if(good.length) downloadText('threads-batch-' + good.length + '.json', JSON.stringify(good, null, 2));
+  });
+
+  // ---------- batch files ----------
+  const dz = $('dropzone'), fileInput = $('fileInput');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('over');
+    handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+  async function handleFiles(files){
+    if(!files || !files.length) return;
+    batch = []; batchlist.innerHTML = '';
+    for(const f of files){
+      const entry = { name: f.name };
+      try{
+        entry.result = convert(await f.text());
+      }catch(e){ entry.error = e.message; }
+      batch.push(entry);
+    }
+    renderBatch();
+    const ok = batch.filter(b => b.result);
+    if(ok.length === 1) showResult(ok[0].result);
+    $('dlAllBtn').disabled = ok.length === 0;
+    statusIn.innerHTML = '<span class="ok">✓ ' + ok.length + '/' + batch.length + ' files converted</span>' +
+      (ok.length < batch.length ? ' <span class="err">(' + (batch.length - ok.length) + ' failed — see list)</span>' : '');
+  }
+
+  function renderBatch(){
+    batchlist.innerHTML = '';
+    batch.forEach(b => {
+      const row = document.createElement('div');
+      row.className = 'batchitem' + (b.error ? ' bad' : '');
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = b.result ? (b.result.post.title || b.name) : b.name;
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = b.error ? b.error : (b.result.comments.length + ' top / ' + countComments(b.result.comments) + ' total');
+      row.appendChild(name); row.appendChild(meta);
+      if(b.result){
+        const btn = document.createElement('button');
+        btn.textContent = 'View';
+        btn.style.flexShrink = '0';
+        btn.addEventListener('click', () => showResult(b.result));
+        row.appendChild(btn);
+        const dl = document.createElement('button');
+        dl.textContent = '↓';
+        dl.title = 'Download this file';
+        dl.style.flexShrink = '0';
+        dl.addEventListener('click', () => downloadText(slug(b.result.post.title) + '.json', JSON.stringify(b.result, null, 2)));
+        row.appendChild(dl);
+      }
+      batchlist.appendChild(row);
+    });
+  }
+
+  // Ctrl/Cmd+Enter converts
+  input.addEventListener('keydown', e => {
+    if((e.ctrlKey || e.metaKey) && e.key === 'Enter') $('convertBtn').click();
+  });
+})();
+</script>
+</body>
+</html>
